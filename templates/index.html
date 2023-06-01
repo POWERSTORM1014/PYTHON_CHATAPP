@@ -1,0 +1,182 @@
+﻿<!DOCTYPE html>
+<html>
+  <head>
+    <title>구몬수학 AI학습 상담봇</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #aedff7;
+        padding: 0;
+        margin: 0;
+        height: 100vh; /* 추가: body의 높이를 100vh로 설정합니다. */
+        display: flex; /* 추가: body를 flex container로 만듭니다. */
+        flex-direction: column; /* 추가: 요소들이 column 방향으로 배치되게 합니다. */
+      }
+      #chat {
+        flex-grow: 1; /* 추가: #chat 영역이 남은 공간을 모두 차지하도록 합니다. */
+        padding: 10px;
+        overflow: auto;
+      }
+      .message {
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+      }
+      .user {
+        justify-content: flex-end;
+      }
+      .ai {
+        justify-content: flex-start;
+      }
+      .message img {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        margin: 5px;
+      }
+      .message div {
+        max-width: 60%;
+        padding: 10px;
+        border-radius: 20px;
+      }
+      .user div {
+        background-color: #ffd700;
+        color: #000;
+      }
+      .ai div {
+        background-color: #d3d3d3;
+        color: #010101;
+      }
+      #form {
+        height: 60px;
+        background-color: #d3d3d3;
+        display: flex;
+        padding: 10px;
+        box-sizing: border-box;
+      }
+      #form input {
+        flex-grow: 1;
+        border: none;
+        padding: 10px;
+        border-radius: 20px;
+      }
+      #form button {
+        margin-left: 10px;
+        padding: 10px 20px;
+        border: none;
+        background-color: #ffd700;
+        color: #000;
+        border-radius: 20px;
+      }
+      #loading {
+        display: none; /* 로딩 메시지를 기본적으로 숨깁니다. */
+        position: fixed; /* 로딩 메시지의 위치를 고정합니다. */
+        left: 50%; /* 로딩 메시지를 가로 방향으로 중앙에 위치시킵니다. */
+        top: 50%; /* 로딩 메시지를 세로 방향으로 중앙에 위치시킵니다. */
+        transform: translate(
+          -50%,
+          -50%
+        ); /* 로딩 메시지를 정확히 중앙에 위치시킵니다. */
+        background-color: rgba(
+          0,
+          0,
+          0,
+          0.5
+        ); /* 로딩 메시지의 배경색을 설정합니다. */
+        color: white; /* 로딩 메시지의 텍스트 색을 설정합니다. */
+        padding: 20px; /* 로딩 메시지의 패딩을 설정합니다. */
+        border-radius: 10px; /* 로딩 메시지의 둥근 모서리를 설정합니다. */
+      }
+      .app-title {
+        background-color: black;
+        color: white;
+        font-size: 24px;
+        padding: 10px 0;
+        text-align: center;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-title">
+      저는 구몬수학 AI학습 상담봇입니다. 무엇이든 물어보세요.
+    </div>
+    <div id="chat"></div>
+    <div id="loading">
+      구몬수학 AI학습 상담사가 답변을 작성하고 있습니다<span id="dots"></span>
+    </div>
+
+    <form id="form" action="#">
+      <input
+        id="input"
+        autocomplete="off"
+        placeholder="초등/중등 수학 질문을 입력하세요..."
+      />
+      <button>Send</button>
+    </form>
+    <script>
+      $(function () {
+        var socket = io.connect(window.location.href)
+        let lastAiMessage = null
+        const originalPlaceholder = $('#input').attr('placeholder')
+
+        $('form').submit(function (e) {
+          e.preventDefault()
+          if ($('#input').prop('disabled')) {
+            // 입력 필드가 비활성화 상태라면 메시지 전송을 건너뜁니다.
+            return
+          }
+          var message = $('#input').val()
+          socket.emit('message', { message: message })
+          $('#input').val('').prop('disabled', true) // 입력 필드를 비활성화합니다.
+          $('#input').attr('placeholder', '학습 상담사가 생각을 하고 있습니다.') // placeholder 변경
+          $('#loading').show() // 로딩 메시지를 표시합니다.
+
+          // "..." 애니메이션 시작
+          var dotCount = 0
+          dotInterval = setInterval(function () {
+            $('#dots').text('.'.repeat(dotCount))
+            dotCount = (dotCount + 1) % 4 // 0, 1, 2, 3, 0, 1, 2, 3, ...
+          }, 500) // 0.5초 간격으로 점 개수를 변경합니다.
+          return false
+        })
+
+        socket.on('user_message', function (data) {
+          var userMessage = $('<div class="message user">')
+          userMessage.append('<img src="/static/user.png" />')
+          userMessage.append($('<div>').text(data.message))
+          $('#chat').append(userMessage)
+          $('#chat').scrollTop($('#chat')[0].scrollHeight)
+
+          lastAiMessage = null // User가 새로운 메시지를 보낼 때마다 마지막 AI 메시지를 초기화합니다.
+        })
+
+        socket.on('ai_message', function (data) {
+          if (!lastAiMessage) {
+            lastAiMessage = $('<div class="message ai">')
+            lastAiMessage.append('<img src="/static/aibot.png" />')
+            lastAiMessage.append($('<div>'))
+            $('#chat').append(lastAiMessage)
+          }
+          lastAiMessage
+            .children()
+            .last()
+            .append(data.message.choices[0].delta.content)
+
+          $('#chat').scrollTop($('#chat')[0].scrollHeight)
+          $('#loading').hide() // AI가 응답할 때 로딩 메시지를 숨깁니다.
+          // "..." 애니메이션 종료
+          clearInterval(dotInterval)
+        })
+
+        socket.on('ai_message_complete', function () {
+          $('#input').prop('disabled', false) // AI가 완료하면 입력 필드를 다시 활성화합니다.
+          $('#input').attr('placeholder', originalPlaceholder) // placeholder 복원
+          $('#input').focus() // 입력창에 포커스를 설정합니다.
+        })
+      })
+    </script>
+  </body>
+</html>
